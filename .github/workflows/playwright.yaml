@@ -1,3 +1,4 @@
+```yaml
 name: Playwright Tests
 
 on:
@@ -15,51 +16,66 @@ on:
         default: 'all'
         type: choice
         options:
-          - smoke
+          - sanity
           - regression
           - all
 
       browser:
-          description: 'Select browser'
-          required: true
-          default: 'chromium'
-          type: choice
-          options:
-            - chromium
-            - firefox
-            - webkit
-            - all        
+        description: 'Select browser'
+        required: true
+        default: 'chromium'
+        type: choice
+        options:
+          - chromium
+          - firefox
+          - webkit
+          - all
 
 jobs:
   playwright-tests:
     runs-on: ubuntu-latest
 
     steps:
+
+      # 1. Download repository code
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2. Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
+      # 3. Install project dependencies
       - name: Install dependencies
         run: npm ci
 
+      # 4. Install Playwright browsers
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
+      # 5. Run selected test suite and browser
       - name: Run Playwright tests
         run: |
-          if [ "${{ inputs.test_suite }}" = "smoke" ]; then
-            npx playwright test --grep @smoke
-          elif [ "${{ inputs.test_suite }}" = "regression" ]; then
-            npx playwright test --grep @regression
+          if [ "${{ inputs.browser }}" = "all" ]; then
+            BROWSER=""
           else
-            npx playwright test
+            BROWSER="--project=${{ inputs.browser }}"
           fi
 
+          if [ "${{ inputs.test_suite }}" = "sanity" ]; then
+            npx playwright test --grep @sanity $BROWSER
+
+          elif [ "${{ inputs.test_suite }}" = "regression" ]; then
+            npx playwright test --grep @regression $BROWSER
+
+          else
+            npx playwright test $BROWSER
+          fi
+
+      # 6. Upload Playwright HTML report
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
@@ -67,3 +83,4 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+```
