@@ -1,4 +1,3 @@
-```yaml
 name: Playwright Tests
 
 on:
@@ -36,51 +35,46 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
-      # 1. Download repository code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      # 3. Install project dependencies
       - name: Install dependencies
         run: npm ci
 
-      # 4. Install Playwright browsers
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      # 5. Run selected test suite and browser
       - name: Run Playwright tests
+        env:
+          TEST_SUITE: ${{ inputs.test_suite || 'all' }}
+          BROWSER_INPUT: ${{ inputs.browser || 'all' }}
         run: |
-          if [ "${{ inputs.browser }}" = "all" ]; then
+          if [ "$BROWSER_INPUT" = "all" ]; then
             BROWSER=""
           else
-            BROWSER="--project=${{ inputs.browser }}"
+            BROWSER="--project=$BROWSER_INPUT"
           fi
 
-          if [ "${{ inputs.test_suite }}" = "sanity" ]; then
+          if [ "$TEST_SUITE" = "sanity" ]; then
             npx playwright test --grep @sanity $BROWSER
-
-          elif [ "${{ inputs.test_suite }}" = "regression" ]; then
+          elif [ "$TEST_SUITE" = "regression" ]; then
             npx playwright test --grep @regression $BROWSER
-
           else
             npx playwright test $BROWSER
           fi
 
-      # 6. Upload Playwright HTML report
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: playwright-report/
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 7
-```
