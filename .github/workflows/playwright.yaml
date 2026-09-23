@@ -1,3 +1,4 @@
+```yaml
 name: Playwright Tests
 
 on:
@@ -9,6 +10,17 @@ on:
 
   workflow_dispatch:
     inputs:
+      environment:
+        description: 'Select environment'
+        required: true
+        default: 'qa'
+        type: choice
+        options:
+          - dev
+          - qa
+          - preprod
+          - uat
+
       test_suite:
         description: 'Select test suite'
         required: true
@@ -52,9 +64,15 @@ jobs:
 
       - name: Run Playwright tests
         env:
+          TEST_ENV: ${{ inputs.environment || 'qa' }}
           TEST_SUITE: ${{ inputs.test_suite || 'all' }}
           BROWSER_INPUT: ${{ inputs.browser || 'all' }}
+
         run: |
+          echo "Environment: $TEST_ENV"
+          echo "Test Suite: $TEST_SUITE"
+          echo "Browser: $BROWSER_INPUT"
+
           if [ "$BROWSER_INPUT" = "all" ]; then
             BROWSER=""
           else
@@ -63,8 +81,10 @@ jobs:
 
           if [ "$TEST_SUITE" = "sanity" ]; then
             npx playwright test --grep @sanity $BROWSER
+
           elif [ "$TEST_SUITE" = "regression" ]; then
             npx playwright test --grep @regression $BROWSER
+
           else
             npx playwright test $BROWSER
           fi
@@ -78,3 +98,4 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+```

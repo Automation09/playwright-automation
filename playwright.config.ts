@@ -8,6 +8,13 @@ import { defineConfig, devices } from '@playwright/test';
 // import path from 'path';
 // dotenv.config({ path: path.resolve(__dirname, '.env') });
 
+const environments = {  dev: 'dev.example.com', 
+                        qa: 'https://playwright.dev', 
+                        preprod: 'preprod.example.com', 
+                        uat: 'uat.example.com', }; 
+
+const environment = process.env.TEST_ENV || 'qa';
+
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
@@ -27,13 +34,17 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('')`. */
-    // baseURL: 'http://localhost:3000',
+    baseURL: environments[environment as keyof typeof environments],
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'retain-on-failure',
 
     /* ADD THIS LINE HERE: Capture screenshot only when a test fails */
     screenshot: 'only-on-failure',
+
+    // Capture video only when a test fails
+    video: 'retain-on-failure',
+    
   },
 
   /* Configure projects for major browsers */
