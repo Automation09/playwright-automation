@@ -19,16 +19,16 @@ on:
           - regression
           - all
 
-  browser:
-      description: 'Select browser'
-      required: true
-      default: 'chromium'
-      type: choice
-      options:
-        - chromium
-        - firefox
-        - webkit
-        - all        
+      browser:
+          description: 'Select browser'
+          required: true
+          default: 'chromium'
+          type: choice
+          options:
+            - chromium
+            - firefox
+            - webkit
+            - all        
 
 jobs:
   playwright-tests:
