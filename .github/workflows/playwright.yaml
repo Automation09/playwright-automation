@@ -1,4 +1,4 @@
-name: Playwright Tests (Parallel Matrix + Docker + Pages)
+name: Playwright Tests (GHCR + Parallel Matrix + Pages)
 
 on:
   push:
@@ -29,6 +29,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
   pages: write
   id-token: write
 
@@ -36,13 +37,47 @@ concurrency:
   group: 'pages'
   cancel-in-progress: false
 
+env:
+  REGISTRY: ghcr.io
+  # Image name formatted in lowercase (required by Docker/GHCR)
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/playwright-runner:latest
+
 jobs:
   # -------------------------------------------------------------------
-  # Job 1: Run tests across browsers in parallel
+  # Job 1: Build & Cache Docker image in GHCR (runs once)
+  # -------------------------------------------------------------------
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Uses GitHub Actions cache so repeated builds are near-instant
+      - name: Build and Push Docker image to GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE_NAME }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # -------------------------------------------------------------------
+  # Job 2: Run Tests across Browsers in Parallel using Pre-built Image
   # -------------------------------------------------------------------
   test-matrix:
+    needs: [build-and-push-image]
     runs-on: ubuntu-latest
-    # Restored: Links to the GitHub Environment for secrets resolution
     environment: ${{ inputs.environment || 'qa' }}
     strategy:
       fail-fast: false
@@ -53,19 +88,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build Playwright Docker Image
-        run: docker build -t playwright-runner .
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run Tests on ${{ matrix.browser }} inside Docker
+      - name: Pull Pre-built Image
+        run: docker pull ${{ env.IMAGE_NAME }}
+
+      - name: Run Tests on ${{ matrix.browser }}
         env:
           TEST_ENV: ${{ inputs.environment || 'qa' }}
           TEST_SUITE: ${{ inputs.test_suite || 'all' }}
           TEST_USER: ${{ secrets.TEST_USERNAME }}
           TEST_PASS: ${{ secrets.TEST_PASSWORD }}
         run: |
-          echo "Running on Browser: ${{ matrix.browser }}"
-          echo "Environment: $TEST_ENV"
-          echo "Suite: $TEST_SUITE"
+          echo "Executing tests on ${{ matrix.browser }}"
 
           if [ "$TEST_SUITE" = "sanity" ]; then
             TAG_FLAG="--grep @sanity"
@@ -81,7 +121,7 @@ jobs:
             -e TEST_PASS="$TEST_PASS" \
             -v ${{ github.workspace }}/playwright-report:/app/playwright-report \
             -v ${{ github.workspace }}/blob-report:/app/blob-report \
-            playwright-runner \
+            ${{ env.IMAGE_NAME }} \
             npx playwright test $TAG_FLAG --project=${{ matrix.browser }} --reporter=blob
 
       - name: Upload Blob Report
@@ -93,13 +133,12 @@ jobs:
           retention-days: 1
 
   # -------------------------------------------------------------------
-  # Job 2: Merge parallel test reports and publish to GitHub Pages
+  # Job 3: Merge and Deploy Combined Report to GitHub Pages
   # -------------------------------------------------------------------
   merge-reports-and-deploy:
     if: always()
     needs: [test-matrix]
     runs-on: ubuntu-latest
-    # Tells GitHub that this step deploys to the official 'github-pages' environment
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -111,9 +150,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
-      - name: Install Playwright for Report Merging
+      - name: Install Playwright for Merging
         run: npm ci
 
       - name: Download All Blob Reports
@@ -123,13 +162,13 @@ jobs:
           pattern: all-blob-reports-*
           merge-multiple: true
 
-      - name: Merge Reports into Single HTML Report
+      - name: Merge Reports into HTML
         run: npx playwright merge-reports --reporter html ./all-blobs
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload to GitHub Pages Artifact
+      - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: playwright-report/
