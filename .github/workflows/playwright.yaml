@@ -1,12 +1,10 @@
-name: Playwright Tests (Docker)
+name: Playwright Tests (Docker + GitHub Pages)
 
 on:
   push:
     branches: [main]
-
   pull_request:
     branches: [main]
-
   workflow_dispatch:
     inputs:
       environment:
@@ -19,7 +17,6 @@ on:
           - qa
           - preprod
           - uat
-
       test_suite:
         description: 'Select test suite'
         required: true
@@ -29,7 +26,6 @@ on:
           - sanity
           - regression
           - all
-
       browser:
         description: 'Select browser'
         required: true
@@ -41,11 +37,20 @@ on:
           - webkit
           - all
 
+# Required permissions for deploying directly to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: 'pages'
+  cancel-in-progress: false
+
 jobs:
   playwright-docker-tests:
     runs-on: ubuntu-latest
-
-    # GitHub Environment scoping for credentials
     environment: ${{ inputs.environment || 'qa' }}
 
     steps:
@@ -67,14 +72,12 @@ jobs:
           echo "Test Suite: $TEST_SUITE"
           echo "Browser: $BROWSER_INPUT"
 
-          # Determine browser flag
           if [ "$BROWSER_INPUT" = "all" ]; then
             BROWSER_FLAG=""
           else
             BROWSER_FLAG="--project=$BROWSER_INPUT"
           fi
 
-          # Determine grep tag flag
           if [ "$TEST_SUITE" = "sanity" ]; then
             TAG_FLAG="--grep @sanity"
           elif [ "$TEST_SUITE" = "regression" ]; then
@@ -83,7 +86,7 @@ jobs:
             TAG_FLAG=""
           fi
 
-          # Execute inside container and mount local report folders
+          # Execute inside container and mount local report folder
           docker run --rm \
             -e TEST_ENV="$TEST_ENV" \
             -e TEST_USER="$TEST_USER" \
@@ -93,7 +96,24 @@ jobs:
             playwright-runner \
             npx playwright test $TAG_FLAG $BROWSER_FLAG
 
-      - name: Upload Playwright Report
+      # --- GitHub Pages Deployment Steps ---
+      - name: Setup Pages
+        if: always()
+        uses: actions/configure-pages@v5
+
+      - name: Upload Artifact to Pages
+        if: always()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: playwright-report/
+
+      - name: Deploy to GitHub Pages
+        if: always()
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      # Backup downloadable zip artifact in GitHub Actions
+      - name: Upload Playwright Artifact Backup
         if: always()
         uses: actions/upload-artifact@v4
         with:
