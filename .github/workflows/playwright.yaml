@@ -37,20 +37,26 @@ concurrency:
   group: 'pages'
   cancel-in-progress: false
 
-env:
-  REGISTRY: ghcr.io
-  # Image name formatted in lowercase (required by Docker/GHCR)
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/playwright-runner:latest
-
 jobs:
   # -------------------------------------------------------------------
   # Job 1: Build & Cache Docker image in GHCR (runs once)
   # -------------------------------------------------------------------
   build-and-push-image:
     runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.set-image.outputs.image_tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Generate Lowercase Image Name
+        id: set-image
+        run: |
+          # Convert username to lowercase
+          LOWER_REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/${LOWER_REPO_OWNER}/playwright-runner:latest"
+          echo "image_tag=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "Building image tag: ${IMAGE}"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -62,13 +68,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Uses GitHub Actions cache so repeated builds are near-instant
       - name: Build and Push Docker image to GHCR
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ${{ env.IMAGE_NAME }}
+          tags: ${{ steps.set-image.outputs.image_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -96,7 +101,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull Pre-built Image
-        run: docker pull ${{ env.IMAGE_NAME }}
+        run: docker pull ${{ needs.build-and-push-image.outputs.image_tag }}
 
       - name: Run Tests on ${{ matrix.browser }}
         env:
@@ -104,6 +109,7 @@ jobs:
           TEST_SUITE: ${{ inputs.test_suite || 'all' }}
           TEST_USER: ${{ secrets.TEST_USERNAME }}
           TEST_PASS: ${{ secrets.TEST_PASSWORD }}
+          IMAGE_TAG: ${{ needs.build-and-push-image.outputs.image_tag }}
         run: |
           echo "Executing tests on ${{ matrix.browser }}"
 
@@ -121,7 +127,7 @@ jobs:
             -e TEST_PASS="$TEST_PASS" \
             -v ${{ github.workspace }}/playwright-report:/app/playwright-report \
             -v ${{ github.workspace }}/blob-report:/app/blob-report \
-            ${{ env.IMAGE_NAME }} \
+            $IMAGE_TAG \
             npx playwright test $TAG_FLAG --project=${{ matrix.browser }} --reporter=blob
 
       - name: Upload Blob Report
