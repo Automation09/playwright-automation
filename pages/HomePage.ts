@@ -13,7 +13,7 @@ export class HomePage{
     }
 
     async navigate(){
-        await this.page.goto('https://practicetestautomation.com/');
+        await this.page.goto('/');
         await expect(this.title).toHaveText('Hello');
     }
     async clickPractice(){

@@ -1,7 +1,7 @@
 import { test, expect } from '../fixtures/test-base';
 import testData from '../data/userdata.json'
 
-test('Valid Login',async ({loginpage,page }) => {
+test('Valid Login @regression',async ({loginpage,page }) => {
 
     await loginpage.navigate();
     await loginpage.page.screenshot({path:`screenshots/${Date.now()}.png`,fullPage:true});
@@ -11,17 +11,17 @@ test('Valid Login',async ({loginpage,page }) => {
 
 });
 
-test('Select Practice from Home Page',async ({homepage,page})=>{
+test('Select Practice from Home Page @sanity',async ({homepage,page})=>{
     await homepage.navigate();
     await homepage.clickPractice();
 });
 
-test('Select login page from practice page',async ({practicepage,page})=>{
+test('Select login page from practice page @sanity',async ({practicepage,page})=>{
     await practicepage.navigate();
     await practicepage.clicktestloginpage();
 });
 
-test('Login',async({homepage,practicepage,loginpage}) => {
+test('Login @regression',async({homepage,practicepage,loginpage}) => {
 
     await homepage.navigate();
     await homepage.clickPractice();

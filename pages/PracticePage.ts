@@ -12,7 +12,7 @@ export class PracticePage{
     }
 
     async navigate(){
-        await this.page.goto('https://practicetestautomation.com/practice/');
+        await this.page.goto('/practice/');
         await expect(this.title).toHaveText('Practice');
     }
 

@@ -36,7 +36,7 @@ export class LoginPage{
         await expect(this.title).toHaveText('Logged In Successfully');
     }
     async navigate(){
-        await this.page.goto('https://practicetestautomation.com/practice-test-login/');
+        await this.page.goto('/practice-test-login/');
     }
     async logOut(){
         await this.logout.click();

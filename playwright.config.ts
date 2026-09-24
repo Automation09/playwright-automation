@@ -9,7 +9,7 @@ import { defineConfig, devices } from '@playwright/test';
 // dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 const environments = {  dev: 'dev.example.com', 
-                        qa: 'https://playwright.dev', 
+                        qa: 'https://practicetestautomation.com', 
                         preprod: 'preprod.example.com', 
                         uat: 'uat.example.com', }; 
 

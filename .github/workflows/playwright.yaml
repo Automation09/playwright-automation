@@ -1,4 +1,4 @@
-name: Playwright Tests
+name: Playwright Tests (Docker)
 
 on:
   push:
@@ -42,50 +42,58 @@ on:
           - all
 
 jobs:
-  playwright-tests:
+  playwright-docker-tests:
     runs-on: ubuntu-latest
+
+    # GitHub Environment scoping for credentials
+    environment: ${{ inputs.environment || 'qa' }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
+      - name: Build Playwright Docker Image
+        run: docker build -t playwright-runner .
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-
-      - name: Run Playwright tests
+      - name: Run Playwright Tests inside Docker
         env:
           TEST_ENV: ${{ inputs.environment || 'qa' }}
           TEST_SUITE: ${{ inputs.test_suite || 'all' }}
           BROWSER_INPUT: ${{ inputs.browser || 'all' }}
+          TEST_USER: ${{ secrets.TEST_USERNAME }}
+          TEST_PASS: ${{ secrets.TEST_PASSWORD }}
         run: |
           echo "Environment: $TEST_ENV"
           echo "Test Suite: $TEST_SUITE"
           echo "Browser: $BROWSER_INPUT"
 
+          # Determine browser flag
           if [ "$BROWSER_INPUT" = "all" ]; then
-            BROWSER=""
+            BROWSER_FLAG=""
           else
-            BROWSER="--project=$BROWSER_INPUT"
+            BROWSER_FLAG="--project=$BROWSER_INPUT"
           fi
 
+          # Determine grep tag flag
           if [ "$TEST_SUITE" = "sanity" ]; then
-            npx playwright test --grep @sanity $BROWSER
+            TAG_FLAG="--grep @sanity"
           elif [ "$TEST_SUITE" = "regression" ]; then
-            npx playwright test --grep @regression $BROWSER
+            TAG_FLAG="--grep @regression"
           else
-            npx playwright test $BROWSER
+            TAG_FLAG=""
           fi
 
-      - name: Upload Playwright report
+          # Execute inside container and mount local report folders
+          docker run --rm \
+            -e TEST_ENV="$TEST_ENV" \
+            -e TEST_USER="$TEST_USER" \
+            -e TEST_PASS="$TEST_PASS" \
+            -v ${{ github.workspace }}/playwright-report:/app/playwright-report \
+            -v ${{ github.workspace }}/test-results:/app/test-results \
+            playwright-runner \
+            npx playwright test $TAG_FLAG $BROWSER_FLAG
+
+      - name: Upload Playwright Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
