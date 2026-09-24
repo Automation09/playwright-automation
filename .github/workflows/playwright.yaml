@@ -1,4 +1,4 @@
-name: Playwright Tests (Docker + GitHub Pages)
+name: Playwright Tests (Parallel Matrix + Docker + Pages)
 
 on:
   push:
@@ -26,32 +26,28 @@ on:
           - sanity
           - regression
           - all
-      browser:
-        description: 'Select browser'
-        required: true
-        default: 'chromium'
-        type: choice
-        options:
-          - chromium
-          - firefox
-          - webkit
-          - all
 
-# Required permissions for deploying directly to GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment
 concurrency:
   group: 'pages'
   cancel-in-progress: false
 
 jobs:
-  playwright-docker-tests:
+  # -------------------------------------------------------------------
+  # Job 1: Run tests across browsers in parallel
+  # -------------------------------------------------------------------
+  test-matrix:
     runs-on: ubuntu-latest
+    # Restored: Links to the GitHub Environment for secrets resolution
     environment: ${{ inputs.environment || 'qa' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
 
     steps:
       - name: Checkout repository
@@ -60,23 +56,16 @@ jobs:
       - name: Build Playwright Docker Image
         run: docker build -t playwright-runner .
 
-      - name: Run Playwright Tests inside Docker
+      - name: Run Tests on ${{ matrix.browser }} inside Docker
         env:
           TEST_ENV: ${{ inputs.environment || 'qa' }}
           TEST_SUITE: ${{ inputs.test_suite || 'all' }}
-          BROWSER_INPUT: ${{ inputs.browser || 'all' }}
           TEST_USER: ${{ secrets.TEST_USERNAME }}
           TEST_PASS: ${{ secrets.TEST_PASSWORD }}
         run: |
+          echo "Running on Browser: ${{ matrix.browser }}"
           echo "Environment: $TEST_ENV"
-          echo "Test Suite: $TEST_SUITE"
-          echo "Browser: $BROWSER_INPUT"
-
-          if [ "$BROWSER_INPUT" = "all" ]; then
-            BROWSER_FLAG=""
-          else
-            BROWSER_FLAG="--project=$BROWSER_INPUT"
-          fi
+          echo "Suite: $TEST_SUITE"
 
           if [ "$TEST_SUITE" = "sanity" ]; then
             TAG_FLAG="--grep @sanity"
@@ -86,39 +75,65 @@ jobs:
             TAG_FLAG=""
           fi
 
-          # Execute inside container and mount local report folder
           docker run --rm \
             -e TEST_ENV="$TEST_ENV" \
             -e TEST_USER="$TEST_USER" \
             -e TEST_PASS="$TEST_PASS" \
             -v ${{ github.workspace }}/playwright-report:/app/playwright-report \
-            -v ${{ github.workspace }}/test-results:/app/test-results \
+            -v ${{ github.workspace }}/blob-report:/app/blob-report \
             playwright-runner \
-            npx playwright test $TAG_FLAG $BROWSER_FLAG
+            npx playwright test $TAG_FLAG --project=${{ matrix.browser }} --reporter=blob
 
-      # --- GitHub Pages Deployment Steps ---
-      - name: Setup Pages
+      - name: Upload Blob Report
         if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-blob-reports-${{ matrix.browser }}
+          path: blob-report/
+          retention-days: 1
+
+  # -------------------------------------------------------------------
+  # Job 2: Merge parallel test reports and publish to GitHub Pages
+  # -------------------------------------------------------------------
+  merge-reports-and-deploy:
+    if: always()
+    needs: [test-matrix]
+    runs-on: ubuntu-latest
+    # Tells GitHub that this step deploys to the official 'github-pages' environment
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Playwright for Report Merging
+        run: npm ci
+
+      - name: Download All Blob Reports
+        uses: actions/download-artifact@v4
+        with:
+          path: all-blobs/
+          pattern: all-blob-reports-*
+          merge-multiple: true
+
+      - name: Merge Reports into Single HTML Report
+        run: npx playwright merge-reports --reporter html ./all-blobs
+
+      - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload Artifact to Pages
-        if: always()
+      - name: Upload to GitHub Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: playwright-report/
 
       - name: Deploy to GitHub Pages
-        if: always()
         id: deployment
         uses: actions/deploy-pages@v4
-
-      # Backup downloadable zip artifact in GitHub Actions
-      - name: Upload Playwright Artifact Backup
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: |
-            playwright-report/
-            test-results/
-          retention-days: 7
