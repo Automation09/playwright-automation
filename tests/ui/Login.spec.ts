@@ -42,3 +42,10 @@ test('logs out after a successful login @regression', async ({ homepage, practic
     await expect(loginpage.page).toHaveURL(/.*logged-in-successfully/);
     await loginpage.logOut();
 });
+
+test('intentionally fails because the element does not exist @regression', async ({ loginpage }) => {
+    console.log('RUNNING: regression - intentionally failing locator test');
+    await loginpage.navigate();
+
+    await expect(loginpage.page.locator('#this-element-does-not-exist')).toBeVisible();
+});

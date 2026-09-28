@@ -1,22 +1,21 @@
-// mcp-server.ts
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import * as fs from 'fs';
-import * as path from 'path';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import process from 'node:process';
 
 const execAsync = promisify(exec);
 
-// 1. Initialize the MCP Server
 const server = new Server(
   {
-    name: 'playwright-test-framework',
-    version: '1.0.0',
+    name: 'playwright-framework',
+    version: '1.1.0',
   },
   {
     capabilities: {
@@ -25,80 +24,87 @@ const server = new Server(
   }
 );
 
-// 2. Define the Tools exposed to your AI Assistant
+// 1. Tool Definitions
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
         name: 'run_tests',
-        description: 'Run Playwright tests locally by project (api, chromium, firefox, webkit) or specific test file path.',
+        description: 'Run Playwright tests by project or specific test file path.',
         inputSchema: {
           type: 'object',
           properties: {
-            project: {
-              type: 'string',
-              description: 'Target project name: "api", "chromium", "firefox", or "webkit"',
-            },
-            filePath: {
-              type: 'string',
-              description: 'Path to spec file, e.g. "tests/ui/Login.spec.ts" or "tests/api/simple-api.spec.ts"',
-            },
-            grep: {
-              type: 'string',
-              description: 'Filter tests by tag, e.g. "@sanity" or "@regression"',
-            },
+            project: { type: 'string', description: 'e.g. "api", "chromium"' },
+            filePath: { type: 'string', description: 'e.g. "tests/ui/login-valid-credentials.spec.ts"' },
+            grep: { type: 'string', description: 'Tag or keyword filter, e.g. "@smoke"' },
           },
         },
       },
       {
+        name: 'get_test_summary',
+        description: 'Parses test-results/results.json and extracts total passes, failures, and detailed error messages.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
         name: 'read_test_data',
-        description: 'Read the contents of a test data file from the data/ folder.',
+        description: 'Read JSON test data from the data/ directory.',
         inputSchema: {
           type: 'object',
           properties: {
-            fileName: {
-              type: 'string',
-              description: 'Name of the JSON file in data directory (e.g., "userdata.json")',
-            },
+            fileName: { type: 'string', description: 'e.g. "userdata.json"' },
           },
           required: ['fileName'],
         },
       },
       {
         name: 'list_page_objects',
-        description: 'Lists all available Page Object files in the pages/ directory.',
+        description: 'Lists all available Page Object files in the pages/ folder.',
         inputSchema: {
           type: 'object',
           properties: {},
+        },
+      },
+      {
+        name: 'read_page_object',
+        description: 'Read the TypeScript source code of a specific Page Object file.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            pageName: { type: 'string', description: 'e.g. "LoginPage.ts"' },
+          },
+          required: ['pageName'],
         },
       },
     ],
   };
 });
 
-// 3. Handle Tool Execution
+// 2. Tool Execution Logic
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
   // Handler: Run Playwright Tests
   if (name === 'run_tests') {
     const projectFlag = args?.project ? `--project=${args.project}` : '';
-    const fileArg = args?.filePath ? args.filePath : '';
+    const fileArg = args?.filePath ? String(args.filePath) : '';
     const grepFlag = args?.grep ? `--grep "${args.grep}"` : '';
 
-    const command = `npx playwright test ${fileArg} ${projectFlag} ${grepFlag} --reporter=list`;
+    const command = `npx playwright test ${fileArg} ${projectFlag} ${grepFlag}`;
 
     try {
       const { stdout, stderr } = await execAsync(command);
       return {
-        content: [{ type: 'text', text: `Test Run Passed:\n${stdout}\n${stderr}` }],
+        content: [{ type: 'text', text: `Tests Finished Successfully:\n${stdout}\n${stderr}` }],
       };
     } catch (error: any) {
       return {
         content: [
           {
             type: 'text',
-            text: `Test Run Failed:\n${error.stdout || ''}\n${error.stderr || ''}\n${error.message}`,
+            text: `Tests Failed. Use 'get_test_summary' for root-cause details.\n\n${error.stdout || error.message}`,
           },
         ],
         isError: true,
@@ -106,49 +112,104 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
   }
 
-  // Handler: Read Test Data
-  if (name === 'read_test_data') {
-    const fileName = String(args?.fileName);
-    const resolvedPath = path.resolve(process.cwd(), 'data', fileName);
-
-    if (!fs.existsSync(resolvedPath)) {
+  // Handler: Parse Test Results JSON
+  if (name === 'get_test_summary') {
+    const reportPath = path.resolve(process.cwd(), 'test-results', 'results.json');
+    if (!fs.existsSync(reportPath)) {
       return {
-        content: [{ type: 'text', text: `File not found: ${resolvedPath}` }],
+        content: [{ type: 'text', text: 'No test-results/results.json found. Run tests first.' }],
         isError: true,
       };
     }
 
-    const content = fs.readFileSync(resolvedPath, 'utf-8');
-    return {
-      content: [{ type: 'text', text: content }],
-    };
+    try {
+      const raw = fs.readFileSync(reportPath, 'utf-8');
+      const data = JSON.parse(raw);
+
+      const failures: Array<{ title: string; file: string; message: string }> = [];
+      let totalPassed = 0;
+      let totalFailed = 0;
+
+      const scanSuites = (suites: any[]) => {
+        for (const suite of suites) {
+          if (suite.specs) {
+            for (const spec of suite.specs) {
+              for (const test of spec.tests) {
+                for (const result of test.results) {
+                  if (result.status === 'passed') totalPassed++;
+                  if (result.status === 'failed' || result.status === 'timedOut') {
+                    totalFailed++;
+                    failures.push({
+                      title: spec.title,
+                      file: spec.file,
+                      message: result.error?.message || 'Unknown error',
+                    });
+                  }
+                }
+              }
+            }
+          }
+          if (suite.suites) scanSuites(suite.suites);
+        }
+      };
+
+      if (data.suites) scanSuites(data.suites);
+
+      const summary = {
+        totalPassed,
+        totalFailed,
+        durationMs: data.stats?.duration || 0,
+        failures,
+      };
+
+      return {
+        content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }],
+      };
+    } catch (err: any) {
+      return {
+        content: [{ type: 'text', text: `Failed to parse results.json: ${err.message}` }],
+        isError: true,
+      };
+    }
+  }
+
+  // Handler: Read Test Data
+  if (name === 'read_test_data') {
+    const filePath = path.resolve(process.cwd(), 'data', String(args?.fileName));
+    if (!fs.existsSync(filePath)) {
+      return { content: [{ type: 'text', text: `File not found: ${filePath}` }], isError: true };
+    }
+    return { content: [{ type: 'text', text: fs.readFileSync(filePath, 'utf-8') }] };
   }
 
   // Handler: List Page Objects
   if (name === 'list_page_objects') {
     const pagesDir = path.resolve(process.cwd(), 'pages');
     if (!fs.existsSync(pagesDir)) {
-      return {
-        content: [{ type: 'text', text: 'No "pages/" directory found in root.' }],
-      };
+      return { content: [{ type: 'text', text: 'Directory "pages/" does not exist.' }] };
     }
-
-    const files = fs.readdirSync(pagesDir).filter((f) => f.endsWith('.ts'));
-    return {
-      content: [{ type: 'text', text: `Page Objects:\n${files.join('\n')}` }],
-    };
+    const files = fs.readdirSync(pagesDir).filter((f: string) => f.endsWith('.ts'));
+    return { content: [{ type: 'text', text: JSON.stringify(files) }] };
   }
 
-  throw new Error(`Tool "${name}" is not implemented.`);
+  // Handler: Read Single Page Object
+  if (name === 'read_page_object') {
+    const pageFile = path.resolve(process.cwd(), 'pages', String(args?.pageName));
+    if (!fs.existsSync(pageFile)) {
+      return { content: [{ type: 'text', text: `Page Object "${args?.pageName}" not found.` }], isError: true };
+    }
+    return { content: [{ type: 'text', text: fs.readFileSync(pageFile, 'utf-8') }] };
+  }
+
+  throw new Error(`Unknown tool: ${name}`);
 });
 
-// 4. Connect over Standard I/O (stdio)
 async function startServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
 
 startServer().catch((err) => {
-  console.error('Fatal error starting MCP Server:', err);
+  console.error('Fatal MCP Server error:', err);
   process.exit(1);
 });

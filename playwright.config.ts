@@ -41,8 +41,22 @@ export default defineConfig({
   /* CI uses 2 workers per runner; local machine uses system default */
   workers: process.env.CI ? 2 : undefined,
 
-  /* Reporter: Use 'blob' in CI for merging; 'html' locally */
-  reporter: process.env.CI ? [['list'], ['blob']] : [['list'], ['html', { open: 'on-failure' }]],
+  /* 
+   * Reporter:
+   * - CI: 'list', 'blob' (for artifact merging), and 'json'
+   * - Local: 'list', 'html' (open: 'never' prevents unwanted popups during AI runs), and 'json'
+   */
+  reporter: process.env.CI
+    ? [
+        ['list'],
+        ['blob'],
+        ['json', { outputFile: 'test-results/results.json' }],
+      ]
+    : [
+        ['list'],
+        ['html', { open: 'never' }],
+        ['json', { outputFile: 'test-results/results.json' }],
+      ],
 
   /* Shared settings across projects */
   use: {
@@ -58,11 +72,11 @@ export default defineConfig({
     // =========================================================================
     {
       name: 'api',
-      testDir: './tests/api', // Targets tests/api only
+      testDir: './tests/api',
       use: {
         baseURL: targetEnv.api,
         extraHTTPHeaders: {
-          'Accept': 'application/json',
+          Accept: 'application/json',
           'Content-Type': 'application/json',
         },
       },
@@ -73,7 +87,7 @@ export default defineConfig({
     // =========================================================================
     {
       name: 'chromium',
-      testDir: './tests/ui', // Targets tests/ui only
+      testDir: './tests/ui',
       use: {
         ...devices['Desktop Chrome'],
         baseURL: targetEnv.ui,
