@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "playwrightFramework": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["tsx", "mcp-server.ts"]
+    },
+    "playwrightBrowser": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--isolated"]
+    }
+  }
+}

@@ -8,7 +8,7 @@ const environments = {
   },
   qa: {
     ui: 'https://practicetestautomation.com',
-    api: 'https://restful-booker.herokuapp.com', // Replace with your QA API endpoint
+    api: 'https://restful-booker.herokuapp.com',
   },
   preprod: {
     ui: 'https://preprod.example.com',

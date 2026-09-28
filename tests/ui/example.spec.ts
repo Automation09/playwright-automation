@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test('has title @sanity', async ({ page }) => {
-  console.log('This is a sanity test');
+  console.log('RUNNING: sanity - has title');
   //await page.goto('https://playwright.dev/');
   //console.log('Page URL is: ' + page.url());
   // Expect a title "to contain" a substring.
@@ -9,7 +9,7 @@ test('has title @sanity', async ({ page }) => {
 });
 
 test('get started link @regression', async ({ page }) => {
-  console.log('Tis is a regression test');
+  console.log('RUNNING: regression - get started link');
   //await page.goto('https://playwright.dev/');
   ///console.log('Page URL is: ' + page.url());
   // Click the get started link.

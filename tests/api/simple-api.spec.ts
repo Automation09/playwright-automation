@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test('API test @api', async ({ request }) => {
+  console.log('RUNNING: api - API test');
   // Playwright automatically prepends the baseURL from playwright.config.ts
   const response = await request.get('/booking/2');
 

@@ -1,16 +1,15 @@
-# Playwright Automation Practice
+# Playwright Practice Automation Framework
 
-This is a practice project for learning browser automation with [Playwright](https://playwright.dev/) and TypeScript.
+This project is a Playwright + TypeScript test automation framework for practicing UI and API testing against the public [Practice Test Automation](https://practicetestautomation.com/) site.
 
-The tests demonstrate:
+## Framework and purpose
 
-- Page Object Model classes for reusable page interactions
-- Custom Playwright fixtures
-- UI navigation and login validation
-- Running tests across Chromium, Firefox, and WebKit
-- HTML reports, screenshots, and traces for failed tests
-
-The tests use the public [Practice Test Automation](https://practicetestautomation.com/) website.
+- Playwright for browser automation
+- TypeScript for test logic and page objects
+- Page Object Model (POM) for reusable UI interactions
+- Custom fixtures for shared page objects
+- API testing using Playwright's request context
+- Regression and sanity tagging for test categorization
 
 ## Prerequisites
 
@@ -19,22 +18,20 @@ The tests use the public [Practice Test Automation](https://practicetestautomati
 
 ## Installation
 
-Clone the repository, move into the project directory, and install the dependencies:
-
 ```bash
 npm install
 npx playwright install
 ```
 
-## Running the tests
+## Run the tests
 
-Run the complete test suite in all configured browsers:
+Run all tests:
 
 ```bash
 npx playwright test
 ```
 
-Run tests in a specific browser:
+Run a specific browser project:
 
 ```bash
 npx playwright test --project=chromium
@@ -42,19 +39,25 @@ npx playwright test --project=firefox
 npx playwright test --project=webkit
 ```
 
-Run tests with the browser visible:
+Run tests in headed mode:
 
 ```bash
 npx playwright test --headed
 ```
 
-Run a specific test file:
+Run a single file:
 
 ```bash
-npx playwright test tests/Login.spec.ts
+npx playwright test tests/ui/Login.spec.ts
 ```
 
-Open the most recent HTML report:
+Run a single test by name:
+
+```bash
+npx playwright test -g "logs in successfully with valid credentials"
+```
+
+Show the HTML report:
 
 ```bash
 npx playwright show-report
@@ -65,34 +68,45 @@ npx playwright show-report
 ```text
 .
 ├── data/
-│   └── userdata.json          Test data for the login scenario
+│   └── userdata.json              Test data for login scenarios
 ├── fixtures/
-│   └── test-base.ts           Custom Playwright fixtures
+│   └── test-base.ts               Custom Playwright fixtures and page objects
 ├── pages/
-│   ├── HomePage.ts            Home page object
-│   ├── LoginPage.ts           Login page object
-│   └── PracticePage.ts        Practice page object
+│   ├── HomePage.ts                Home page actions
+│   ├── LoginPage.ts               Login page interactions
+│   └── PracticePage.ts            Practice page navigation helpers
 ├── tests/
-│   ├── Login.spec.ts          Practice Test Automation scenarios
-│   └── example.spec.ts        Playwright example tests
-├── playwright.config.ts       Playwright configuration
-├── package.json               Project dependencies
-└── tsconfig.json              TypeScript configuration
+│   ├── api/
+│   │   └── simple-api.spec.ts     API validation test
+│   └── ui/
+│       ├── Login.spec.ts          Login UI workflow tests
+│       ├── example.spec.ts        Example Playwright test cases
+│       └── login-valid-credentials.spec.ts  Duplicate valid-login case removed from active suite
+├── Dockerfile                     Container setup for the project
+├── mcp-server.ts                 MCP server entry point
+├── playwright.config.ts          Playwright configuration
+├── package.json                  Project scripts and dependencies
+├── tsconfig.json                 TypeScript configuration
+├── README.md                     Project documentation
+├── screenshots/                  Local screenshots
+├── test-results/                 Playwright test output
+├── playwright-report/            HTML test report
+└── data/userdata.json            Login credentials used in tests
 ```
 
 ## Test credentials
 
-The login test uses the demo credentials provided by Practice Test Automation:
+The UI tests use the demo credentials for the public practice site:
 
 ```text
 Username: student
 Password: Password123
 ```
 
-These values are stored in `data/userdata.json` for practice purposes only. Do not use real credentials in test data or commit secrets to the repository.
+The credentials are stored in `data/userdata.json` for training and practice purposes only.
 
 ## Notes
 
-- The tests require an internet connection because they interact with public websites.
-- Test results and reports are generated locally and are excluded from version control.
-- The target website may change, become unavailable, or behave differently over time, which can cause practice tests to fail.
+- The tests communicate with a public external website, so internet access is required.
+- Reports and test artifacts are generated locally in the project folder.
+- The target website may change over time, so tests should be kept aligned with the current UI.

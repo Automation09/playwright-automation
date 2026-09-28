@@ -7,8 +7,13 @@
     "strict": false,
     "noImplicitAny": false,
     "esModuleInterop": true,
-    "types": ["node"],
+    "types": ["node", "@playwright/test"],
     "resolveJsonModule": true
   },
-  "include": ["tests/**/*", "pages/**/*", "playwright.config.ts"]
+  "include": [
+    "tests/**/*",
+    "pages/**/*",
+    "playwright.config.ts",
+    "mcp-server.ts"
+  ]
 }
