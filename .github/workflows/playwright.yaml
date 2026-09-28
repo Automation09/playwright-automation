@@ -1,4 +1,4 @@
-name: Playwright Tests (GHCR + Parallel Matrix + Pages)
+name: Playwright Tests (Native Runners + Parallel Matrix + Pages)
 
 on:
   push:
@@ -25,11 +25,11 @@ on:
         options:
           - sanity
           - regression
+          - api
           - all
 
 permissions:
   contents: read
-  packages: write
   pages: write
   id-token: write
 
@@ -39,49 +39,46 @@ concurrency:
 
 jobs:
   # -------------------------------------------------------------------
-  # Job 1: Build & Cache Docker image in GHCR (runs once)
+  # Job 1: Run API Tests ONCE (Headless Node.js, No Browsers)
   # -------------------------------------------------------------------
-  build-and-push-image:
+  test-api:
+    if: inputs.test_suite == 'all' || inputs.test_suite == 'regression' || inputs.test_suite == 'api' || github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.set-image.outputs.image_tag }}
+    environment: ${{ inputs.environment || 'qa' }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Generate Lowercase Image Name
-        id: set-image
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run API Tests
+        env:
+          TEST_ENV: ${{ inputs.environment || 'qa' }}
         run: |
-          # Convert username to lowercase
-          LOWER_REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE="ghcr.io/${LOWER_REPO_OWNER}/playwright-runner:latest"
-          echo "image_tag=${IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "Building image tag: ${IMAGE}"
+          echo "Executing API tests on Node.js runner"
+          npx playwright test --project=api
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - name: Upload API Blob Report
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and Push Docker image to GHCR
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.set-image.outputs.image_tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          name: all-blob-reports-api
+          path: blob-report/
+          retention-days: 1
 
   # -------------------------------------------------------------------
-  # Job 2: Run Tests across Browsers in Parallel using Pre-built Image
+  # Job 2: Run UI Tests across Browsers in Parallel
   # -------------------------------------------------------------------
   test-matrix:
-    needs: [build-and-push-image]
+    if: inputs.test_suite != 'api'
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment || 'qa' }}
     strategy:
@@ -93,25 +90,38 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          node-version: 20
+          cache: 'npm'
 
-      - name: Pull Pre-built Image
-        run: docker pull ${{ needs.build-and-push-image.outputs.image_tag }}
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Run Tests on ${{ matrix.browser }}
+      - name: Cache Playwright Browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/package-lock.json') }}-${{ matrix.browser }}
+
+      - name: Install Playwright Browser
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Install Browser Dependencies Only (On Cache Hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps ${{ matrix.browser }}
+
+      - name: Run UI Tests on ${{ matrix.browser }}
         env:
           TEST_ENV: ${{ inputs.environment || 'qa' }}
           TEST_SUITE: ${{ inputs.test_suite || 'all' }}
           TEST_USER: ${{ secrets.TEST_USERNAME }}
           TEST_PASS: ${{ secrets.TEST_PASSWORD }}
-          IMAGE_TAG: ${{ needs.build-and-push-image.outputs.image_tag }}
         run: |
-          echo "Executing tests on ${{ matrix.browser }}"
+          echo "Executing UI tests on ${{ matrix.browser }}"
 
           if [ "$TEST_SUITE" = "sanity" ]; then
             TAG_FLAG="--grep @sanity"
@@ -121,16 +131,9 @@ jobs:
             TAG_FLAG=""
           fi
 
-          docker run --rm \
-            -e TEST_ENV="$TEST_ENV" \
-            -e TEST_USER="$TEST_USER" \
-            -e TEST_PASS="$TEST_PASS" \
-            -v ${{ github.workspace }}/playwright-report:/app/playwright-report \
-            -v ${{ github.workspace }}/blob-report:/app/blob-report \
-            $IMAGE_TAG \
-            npx playwright test $TAG_FLAG --project=${{ matrix.browser }} --reporter=blob
+          npx playwright test $TAG_FLAG --project=${{ matrix.browser }}
 
-      - name: Upload Blob Report
+      - name: Upload UI Matrix Blob Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -139,11 +142,11 @@ jobs:
           retention-days: 1
 
   # -------------------------------------------------------------------
-  # Job 3: Merge and Deploy Combined Report to GitHub Pages
+  # Job 3: Merge Both API & UI Reports, Deploy to GitHub Pages
   # -------------------------------------------------------------------
   merge-reports-and-deploy:
     if: always()
-    needs: [test-matrix]
+    needs: [test-api, test-matrix]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -156,12 +159,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 20
+          cache: 'npm'
 
-      - name: Install Playwright for Merging
+      - name: Install dependencies
         run: npm ci
 
-      - name: Download All Blob Reports
+      - name: Download All Blob Reports (UI + API)
         uses: actions/download-artifact@v4
         with:
           path: all-blobs/

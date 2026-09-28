@@ -1,10 +1,10 @@
-import { test, expect } from '../fixtures/test-base';
-import testData from '../data/userdata.json'
+import { test, expect } from '../../fixtures/test-base';
+import testData from '../../data/userdata.json'
 
 test('Valid Login @regression',async ({loginpage,page }) => {
 
     await loginpage.navigate();
-    await loginpage.page.screenshot({path:`screenshots/${Date.now()}.png`,fullPage:true});
+    //await loginpage.page.screenshot({path:`screenshots/${Date.now()}.png`,fullPage:true});
     await loginpage.login('student','Password123');
     await expect(page).toHaveURL(/.*logged-in-successfully/);
     //await expect(page.locator('h1.post-title')).toHaveText('Logged In Successfully');

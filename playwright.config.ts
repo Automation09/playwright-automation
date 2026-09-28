@@ -1,94 +1,99 @@
 import { defineConfig, devices } from '@playwright/test';
 
-/**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
- */
-// import dotenv from 'dotenv';
-// import path from 'path';
-// dotenv.config({ path: path.resolve(__dirname, '.env') });
+// Define environment endpoints (UI & API)
+const environments = {
+  dev: {
+    ui: 'https://dev.example.com',
+    api: 'https://api-dev.example.com',
+  },
+  qa: {
+    ui: 'https://practicetestautomation.com',
+    api: 'https://restful-booker.herokuapp.com', // Replace with your QA API endpoint
+  },
+  preprod: {
+    ui: 'https://preprod.example.com',
+    api: 'https://api-preprod.example.com',
+  },
+  uat: {
+    ui: 'https://uat.example.com',
+    api: 'https://api-uat.example.com',
+  },
+};
 
-const environments = {  dev: 'dev.example.com', 
-                        qa: 'https://practicetestautomation.com', 
-                        preprod: 'preprod.example.com', 
-                        uat: 'uat.example.com', }; 
+const currentEnv = (process.env.TEST_ENV || 'qa') as keyof typeof environments;
+const targetEnv = environments[currentEnv] || environments.qa;
 
-const environment = process.env.TEST_ENV || 'qa';
-
-/**
- * See https://playwright.dev/docs/test-configuration.
- */
 export default defineConfig({
-  testDir: './tests',
   timeout: 60000,
-  /* Run tests in files in parallel */
-  fullyParallel: true,
-  /* Fail the build on CI if you accidentally left test.only in the source code. */
-  forbidOnly: !!process.env.CI,
-  /* Retry on CI only */
-  retries: process.env.CI ? 1 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
-  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: 'html',
-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
-  use: {
-    /* Base URL to use in actions like `await page.goto('')`. */
-    baseURL: environments[environment as keyof typeof environments],
-
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: 'retain-on-failure',
-
-    /* ADD THIS LINE HERE: Capture screenshot only when a test fails */
-    screenshot: 'only-on-failure',
-
-    // Capture video only when a test fails
-    video: 'retain-on-failure',
-    
+  expect: {
+    timeout: 10000,
   },
 
-  /* Configure projects for major browsers */
+  /* Run tests inside each file in parallel */
+  fullyParallel: true,
+
+  /* Prevent accidental test.only in CI builds */
+  forbidOnly: !!process.env.CI,
+
+  /* Retry on CI only to catch network flakes */
+  retries: process.env.CI ? 1 : 0,
+
+  /* CI uses 2 workers per runner; local machine uses system default */
+  workers: process.env.CI ? 2 : undefined,
+
+  /* Reporter: Use 'blob' in CI for merging; 'html' locally */
+  reporter: process.env.CI ? [['list'], ['blob']] : [['list'], ['html', { open: 'on-failure' }]],
+
+  /* Shared settings across projects */
+  use: {
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
+  },
+
+  /* Isolated Projects by Folder */
   projects: [
+    // =========================================================================
+    // 1. PURE API PROJECT (Browserless, Headless HTTP Client)
+    // =========================================================================
+    {
+      name: 'api',
+      testDir: './tests/api', // Targets tests/api only
+      use: {
+        baseURL: targetEnv.api,
+        extraHTTPHeaders: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      },
+    },
+
+    // =========================================================================
+    // 2. UI BROWSER MATRIX (Runs tests/ui only)
+    // =========================================================================
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      testDir: './tests/ui', // Targets tests/ui only
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: targetEnv.ui,
+      },
     },
-
     {
       name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
+      testDir: './tests/ui',
+      use: {
+        ...devices['Desktop Firefox'],
+        baseURL: targetEnv.ui,
+      },
     },
-
     {
       name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
+      testDir: './tests/ui',
+      use: {
+        ...devices['Desktop Safari'],
+        baseURL: targetEnv.ui,
+      },
     },
-
-    /* Test against mobile viewports. */
-    // {
-    //   name: 'Mobile Chrome',
-    //   use: { ...devices['Pixel 5'] },
-    // },
-    // {
-    //   name: 'Mobile Safari',
-    //   use: { ...devices['iPhone 12'] },
-    // },
-
-    /* Test against branded browsers. */
-    // {
-    //   name: 'Microsoft Edge',
-    //   use: { ...devices['Desktop Edge'], channel: 'msedge' },
-    // },
-    // {
-    //   name: 'Google Chrome',
-    //   use: { ...devices['Desktop Chrome'], channel: 'chrome' },
-    // },
   ],
-
-  /* Run your local dev server before starting the tests */
-  // webServer: {
-  //   command: 'npm run start',
-  //   url: 'http://localhost:3000',
-  //   reuseExistingServer: !process.env.CI,
-  // },
 });
