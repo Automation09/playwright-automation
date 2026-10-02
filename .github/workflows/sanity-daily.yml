@@ -2,7 +2,7 @@ name: Daily Sanity Tests
 
 on:
   schedule:
-    - cron: '0 9 * * *'
+    - cron: '0 2 * * *'
   workflow_dispatch:
 
 permissions:
@@ -45,3 +45,23 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  notify:
+    if: always()
+    needs: sanity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Email workflow result
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          from: ${{ secrets.MAIL_USERNAME }}
+          to: ${{ secrets.NOTIFY_EMAIL }}
+          subject: Daily sanity tests - ${{ needs.sanity.result }}
+          body: |
+            Daily sanity workflow result: ${{ needs.sanity.result }}
+            Run details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
