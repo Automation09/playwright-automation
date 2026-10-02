@@ -52,6 +52,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
+      - name: Upload test result summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanity-results-${{ matrix.browser }}
+          path: test-results/results.json
+          if-no-files-found: ignore
+          retention-days: 1
+
   publish-report:
     if: always()
     needs: sanity
@@ -101,7 +110,38 @@ jobs:
     needs: [sanity, publish-report]
     runs-on: ubuntu-latest
     steps:
+      - name: Download browser test summaries
+        if: always()
+        uses: actions/download-artifact@v4
+        with:
+          path: all-results/
+          pattern: sanity-results-*
+          if-no-artifact-found: ignore
+
+      - name: Build email results table
+        if: always()
+        id: email-summary
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const browsers = ['chromium', 'firefox', 'webkit'];
+          const rows = browsers.map((browser) => {
+            const resultPath = path.join('all-results', `sanity-results-${browser}`, 'results.json');
+            if (!fs.existsSync(resultPath)) {
+              return `<tr><td>${browser}</td><td colspan="4">Results unavailable</td></tr>`;
+            }
+
+            const stats = JSON.parse(fs.readFileSync(resultPath, 'utf8')).stats ?? {};
+            return `<tr><td>${browser}</td><td>${stats.expected ?? 0}</td><td>${stats.unexpected ?? 0}</td><td>${stats.flaky ?? 0}</td><td>${stats.skipped ?? 0}</td></tr>`;
+          });
+          const table = `<table style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px"><thead><tr><th style="padding:8px;border:1px solid #ccc;text-align:left">Browser</th><th style="padding:8px;border:1px solid #ccc">Passed</th><th style="padding:8px;border:1px solid #ccc">Failed</th><th style="padding:8px;border:1px solid #ccc">Flaky</th><th style="padding:8px;border:1px solid #ccc">Skipped</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+          const delimiter = `EMAIL_TABLE_${require('node:crypto').randomUUID()}`;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `table<<${delimiter}\n${table}\n${delimiter}\n`);
+          NODE
+
       - name: Email workflow result
+        if: always()
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
@@ -116,3 +156,11 @@ jobs:
             Daily sanity workflow result: ${{ needs.sanity.result }}
             Playwright HTML report: ${{ needs.publish-report.outputs.page_url }}
             Run details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          html_body: |
+            <html><body style="font-family:Arial,sans-serif;color:#222">
+            <h2>Daily sanity test results</h2>
+            <p><strong>Overall status:</strong> ${{ needs.sanity.result }}</p>
+            ${{ steps.email-summary.outputs.table }}
+            <p><a href="${{ needs.publish-report.outputs.page_url }}" style="display:inline-block;padding:10px 16px;background:#1769aa;color:#fff;text-decoration:none;border-radius:4px">Open Playwright report</a></p>
+            <p><a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View GitHub Actions run</a></p>
+            </body></html>
