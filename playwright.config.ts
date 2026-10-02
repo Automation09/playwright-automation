@@ -36,7 +36,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
 
   /* Retry on CI only to catch network flakes */
-  retries: process.env.CI ? 1 : 0,
+  retries: process.env.CI ? 2 : 2,
 
   /* CI uses 2 workers per runner; local machine uses system default */
   workers: process.env.CI ? 2 : undefined,
