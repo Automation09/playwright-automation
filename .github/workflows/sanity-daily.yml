@@ -7,6 +7,12 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   sanity:
@@ -37,18 +43,62 @@ jobs:
           TEST_ENV: qa
         run: npx playwright test --grep @sanity --project=${{ matrix.browser }}
 
-      - name: Upload test results
+      - name: Upload Playwright blob report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sanity-results-${{ matrix.browser }}
-          path: test-results/
+          name: sanity-blob-${{ matrix.browser }}
+          path: blob-report/
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 1
+
+  publish-report:
+    if: always()
+    needs: sanity
+    runs-on: ubuntu-latest
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download browser reports
+        uses: actions/download-artifact@v4
+        with:
+          path: all-blobs/
+          pattern: sanity-blob-*
+          merge-multiple: true
+
+      - name: Merge Playwright reports
+        run: npx playwright merge-reports --reporter html ./all-blobs
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: playwright-report/
+
+      - name: Deploy report to Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
   notify:
     if: always()
-    needs: sanity
+    needs: [sanity, publish-report]
     runs-on: ubuntu-latest
     steps:
       - name: Email workflow result
@@ -64,4 +114,5 @@ jobs:
           subject: Daily sanity tests - ${{ needs.sanity.result }}
           body: |
             Daily sanity workflow result: ${{ needs.sanity.result }}
+            Playwright HTML report: ${{ needs.publish-report.outputs.page_url }}
             Run details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
